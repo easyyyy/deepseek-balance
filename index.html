@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DeepSeek余额">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <title>DeepSeek 余额</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f1117;
+      --card: #1a1c26;
+      --card2: #242736;
+      --text: #e8eaf0;
+      --text2: #8b8fa3;
+      --accent: #4f8cff;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --radius: 20px;
+    }
+
+    body {
+      font-family: -apple-system, 'SF Pro Display', 'PingFang SC', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      width: 100%;
+      max-width: 400px;
+      padding: 12px 0 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+    .header p {
+      font-size: 13px;
+      color: var(--text2);
+      margin-top: 4px;
+    }
+
+    /* ===== Card ===== */
+    .card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    /* ===== Balance Display ===== */
+    .balance-wrap {
+      text-align: center;
+      padding: 8px 0;
+    }
+    .balance-amount {
+      font-size: 52px;
+      font-weight: 700;
+      letter-spacing: -1.5px;
+      line-height: 1.1;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .balance-unit {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text2);
+      margin-left: 4px;
+      -webkit-text-fill-color: var(--text2);
+    }
+    .balance-label {
+      font-size: 14px;
+      color: var(--text2);
+      margin-top: 8px;
+      letter-spacing: 0.3px;
+    }
+    .balance-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .balance-status.ok {
+      background: rgba(52,211,153,0.12);
+      color: var(--green);
+    }
+    .balance-status.low {
+      background: rgba(251,191,36,0.12);
+      color: var(--yellow);
+    }
+    .balance-status.empty {
+      background: rgba(248,113,113,0.12);
+      color: var(--red);
+    }
+    .balance-status .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .balance-status.ok .dot { background: var(--green); }
+    .balance-status.low .dot { background: var(--yellow); }
+    .balance-status.empty .dot { background: var(--red); }
+
+    /* ===== Info Grid ===== */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .info-item {
+      background: var(--card2);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .info-item .label {
+      font-size: 12px;
+      color: var(--text2);
+      margin-bottom: 4px;
+    }
+    .info-item .value {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .info-item .value.sub {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    /* ===== API Key Input ===== */
+    .key-section { margin-bottom: 0; }
+    .key-section label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      display: block;
+      margin-bottom: 8px;
+    }
+    .key-row {
+      display: flex;
+      gap: 8px;
+    }
+    .key-row input {
+      flex: 1;
+      background: var(--card2);
+      border: 1px solid #2f3346;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border 0.2s;
+      font-family: 'SF Mono', 'Menlo', monospace;
+    }
+    .key-row input:focus {
+      border-color: var(--accent);
+    }
+    .key-row input::placeholder {
+      color: #555a70;
+      font-family: -apple-system, system-ui, sans-serif;
+    }
+    .key-row button {
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      padding: 0 18px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    .key-row button:active { opacity: 0.7; }
+    .key-hint {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    /* ===== Refresh Button ===== */
+    .refresh-btn {
+      width: 100%;
+      max-width: 400px;
+      background: var(--card2);
+      border: none;
+      border-radius: 14px;
+      padding: 14px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .refresh-btn:active {
+      background: #2f3346;
+      transform: scale(0.98);
+    }
+    .refresh-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .refresh-btn .icon {
+      display: inline-block;
+      transition: transform 0.3s;
+    }
+    .refresh-btn.loading .icon {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ===== Footer ===== */
+    .footer {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #3f4359;
+      text-align: center;
+    }
+
+    /* ===== Error ===== */
+    .error-msg {
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.2);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--red);
+      margin-bottom: 16px;
+      display: none;
+      word-break: break-word;
+    }
+    .error-msg.show { display: block; }
+
+    /* ===== Loading Skeleton ===== */
+    .skeleton {
+      background: linear-gradient(90deg, var(--card2) 25%, #2a2e40 50%, var(--card2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 8px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skeleton.big {
+      width: 180px; height: 56px;
+      margin: 0 auto 12px;
+    }
+    .skeleton.small {
+      width: 100px; height: 20px;
+      margin: 0 auto;
+    }
+
+    /* ===== Last updated ===== */
+    .last-update {
+      font-size: 11px;
+      color: #3f4359;
+      text-align: center;
+      margin-top: 12px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f2f4f8;
+        --card: #ffffff;
+        --card2: #eef0f5;
+        --text: #1a1c2e;
+        --text2: #707488;
+        --accent: #4f6fff;
+      }
+      .header h1 { color: var(--text); }
+      .key-row input { background: #fff; border-color: #d0d4e0; }
+      .key-row input:focus { border-color: var(--accent); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🧠 DeepSeek 余额</h1>
+    <p>实时查询 API 账户余额</p>
+  </div>
+
+  <!-- API Key -->
+  <div class="card key-section">
+    <label for="apiKey">API Key</label>
+    <div class="key-row">
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+      <button id="saveBtn">保存</button>
+    </div>
+    <div class="key-hint">Key 仅保存在你手机本地，不会上传到任何服务器</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- Balance Card -->
+  <div class="card" id="balanceCard">
+    <div class="balance-wrap">
+      <div id="balanceSkeleton">
+        <div class="skeleton big"></div>
+        <div class="skeleton small"></div>
+      </div>
+      <div id="balanceContent" style="display:none;">
+        <div class="balance-amount">
+          <span id="balanceNum">--</span>
+          <span class="balance-unit">¥</span>
+        </div>
+        <div class="balance-label">可用余额</div>
+        <div class="balance-status" id="balanceStatus">
+          <span class="dot"></span>
+          <span id="statusText">--</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Grid -->
+  <div class="card" style="padding:20px 20px 8px;">
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="label">已用额度</div>
+        <div class="value" id="usedAmount">--</div>
+        <div class="value sub">总充值 <span id="totalRecharge">--</span></div>
+      </div>
+      <div class="info-item">
+        <div class="label">余额状态</div>
+        <div class="value" id="balanceState">--</div>
+        <div class="value sub" id="suggestTopup"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Refresh -->
+  <button class="refresh-btn" id="refreshBtn">
+    <span class="icon">↻</span>
+    <span>刷新余额</span>
+  </button>
+
+  <div class="last-update" id="lastUpdate"></div>
+
+  <div class="footer">
+    数据来自 DeepSeek API · 仅本地存储
+  </div>
+
+  <script>
+    (function() {
+      const API_KEY_STORAGE = 'ds_balance_key';
+      const BALANCE_CACHE = 'ds_balance_cache';
+      const CACHE_DURATION = 60 * 1000; // 1 min
+
+      const $ = id => document.getElementById(id);
+
+      const apiKeyInput = $('apiKey');
+      const saveBtn = $('saveBtn');
+      const errorMsg = $('errorMsg');
+      const refreshBtn = $('refreshBtn');
+      const balanceSkeleton = $('balanceSkeleton');
+      const balanceContent = $('balanceContent');
+      const balanceNum = $('balanceNum');
+      const balanceStatus = $('balanceStatus');
+      const statusText = $('statusText');
+      const usedAmount = $('usedAmount');
+      const totalRecharge = $('totalRecharge');
+      const balanceState = $('balanceState');
+      const suggestTopup = $('suggestTopup');
+      const lastUpdate = $('lastUpdate');
+
+      // ---- Load saved key ----
+      const savedKey = localStorage.getItem(API_KEY_STORAGE);
+      if (savedKey) {
+        apiKeyInput.value = savedKey;
+      }
+
+      // ---- Show error ----
+      function showError(msg) {
+        errorMsg.textContent = msg;
+        errorMsg.classList.add('show');
+      }
+      function hideError() {
+        errorMsg.classList.remove('show');
+      }
+
+      // ---- Show loading state ----
+      function showLoading() {
+        balanceSkeleton.style.display = 'block';
+        balanceContent.style.display = 'none';
+        refreshBtn.classList.add('loading');
+        refreshBtn.disabled = true;
+      }
+
+      // ---- Format helpers ----
+      function fmtCurrency(n) {
+        if (n == null || isNaN(n)) return '--';
+        return Number(n).toFixed(2);
+      }
+
+      function fmtTime(ts) {
+        const d = new Date(ts);
+        return d.toLocaleString('zh-CN', { hour12: false });
+      }
+
+      // ---- Query balance ----
+      async function queryBalance(apiKey) {
+        // DeepSeek balance API
+        // Docs: GET https://api.deepseek.com/user/balance
+        const resp = await fetch('https://api.deepseek.com/user/balance', {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          if (resp.status === 401) throw new Error('API Key 无效，请检查后重试');
+          if (resp.status === 429) throw new Error('请求过于频繁，请稍后再试');
+          throw new Error(`请求失败 (${resp.status})${text ? ': ' + text.slice(0,100) : ''}`);
+        }
+        return await resp.json();
+      }
+
+      // ---- Render balance ----
+      function renderBalance(data) {
+        const balance = parseFloat(data.balance_infos?.[0]?.total_balance ?? data.balance ?? 0);
+        const used = parseFloat(data.balance_infos?.[0]?.total_used ?? 0);
+        const total = parseFloat(data.total_recharge ?? 0);
+
+        balanceNum.textContent = fmtCurrency(balance);
+
+        // Status
+        if (balance <= 0) {
+          balanceStatus.className = 'balance-status empty';
+          statusText.textContent = '余额已用尽';
+          balanceState.textContent = '⚠️ 需立即充值';
+          suggestTopup.textContent = 'API 将无法调用';
+        } else if (balance < 10) {
+          balanceStatus.className = 'balance-status low';
+          statusText.textContent = '余额不足';
+          balanceState.textContent = '⚡ 建议尽快充值';
+          suggestTopup.textContent = `预估可用约 ${Math.floor(balance / 0.002 / 10000)} 万 tokens`;
+        } else {
+          balanceStatus.className = 'balance-status ok';
+          statusText.textContent = '余额充足';
+          balanceState.textContent = '✅ 正常使用中';
+          const estTokens = Math.floor(balance / 0.002 * 10000);
+          suggestTopup.textContent = `预估可用约 ${estTokens.toLocaleString()} tokens`;
+        }
+
+        usedAmount.textContent = fmtCurrency(used);
+        totalRecharge.textContent = '¥' + fmtCurrency(total);
+
+        // Cache
+        const cache = { balance, used, total, timestamp: Date.now() };
+        try {
+          localStorage.setItem(BALANCE_CACHE, JSON.stringify(cache));
+        } catch(e) { /* ignore */ }
+
+        lastUpdate.textContent = '上次更新: ' + fmtTime(Date.now());
+      }
+
+      // ---- Load cached ----
+      function loadCache() {
+        try {
+          const raw = localStorage.getItem(BALANCE_CACHE);
+          if (!raw) return false;
+          const cache = JSON.parse(raw);
+          if (!cache || typeof cache.balance !== 'number') return false;
+          // Show stale data immediately
+          balanceNum.textContent = fmtCurrency(cache.balance);
+          usedAmount.textContent = fmtCurrency(cache.used || 0);
+          totalRecharge.textContent = '¥' + fmtCurrency(cache.total || 0);
+          lastUpdate.textContent = '上次更新: ' + fmtTime(cache.timestamp);
+          // Skeleton off, content on
+          balanceSkeleton.style.display = 'none';
+          balanceContent.style.display = 'block';
+          // Minimal status from cache
+          if (cache.balance <= 0) {
+            balanceStatus.className = 'balance-status empty';
+            statusText.textContent = '余额已用尽';
+            balanceState.textContent = '⚠️ 需立即充值';
+            suggestTopup.textContent = 'API 将无法调用';
+          } else if (cache.balance < 10) {
+            balanceStatus.className = 'balance-status low';
+            statusText.textContent = '余额不足';
+            balanceState.textContent = '⚡ 建议尽快充值';
+          } else {
+            balanceStatus.className = 'balance-status ok';
+            statusText.textContent = '余额充足';
+            balanceState.textContent = '✅ 正常使用中';
+          }
+          return true;
+        } catch(e) { return false; }
+      }
+
+      // ---- Main fetch ----
+      async function fetchBalance(apiKey) {
+        hideError();
+        showLoading();
+
+        try {
+          const data = await queryBalance(apiKey);
+          renderBalance(data);
+          balanceSkeleton.style.display = 'none';
+          balanceContent.style.display = 'block';
+        } catch (err) {
+          showError(err.message);
+          // Fall back to cache if available
+          if (!loadCache()) {
+            balanceSkeleton.style.display = 'none';
+            balanceContent.style.display = 'block';
+            balanceNum.textContent = '--';
+            statusText.textContent = '加载失败';
+            balanceStatus.className = 'balance-status empty';
+          }
+        } finally {
+          refreshBtn.classList.remove('loading');
+          refreshBtn.disabled = false;
+        }
+      }
+
+      // ---- Actions ----
+      function saveKey() {
+        const key = apiKeyInput.value.trim();
+        if (!key) {
+          showError('请输入 API Key');
+          return;
+        }
+        if (!key.startsWith('sk-')) {
+          showError('Key 格式似乎不对，应以 sk- 开头');
+          return;
+        }
+        localStorage.setItem(API_KEY_STORAGE, key);
+        hideError();
+        fetchBalance(key);
+      }
+
+      function refresh() {
+        const key = localStorage.getItem(API_KEY_STORAGE);
+        if (!key) {
+          showError('请先输入并保存 API Key');
+          return;
+        }
+        apiKeyInput.value = key;
+        fetchBalance(key);
+      }
+
+      // ---- Init ----
+      function init() {
+        // Load cached display first
+        const hasCache = loadCache();
+
+        const key = localStorage.getItem(API_KEY_STORAGE);
+        if (key) {
+          // Auto fetch on load (after cache is shown)
+          setTimeout(() => fetchBalance(key), 300);
+        } else if (!hasCache) {
+          // Show empty state
+          balanceSkeleton.style.display = 'none';
+          balanceContent.style.display = 'block';
+          balanceNum.textContent = '--';
+          statusText.textContent = '未配置';
+          balanceStatus.className = 'balance-status empty';
+          balanceState.textContent = '请先输入 API Key';
+        }
+
+        // Events
+        saveBtn.addEventListener('click', saveKey);
+        refreshBtn.addEventListener('click', refresh);
+        apiKeyInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveKey();
+        });
+      }
+
+      // iOS home screen gesture protection
+      document.addEventListener('touchmove', function(e) {}, { passive: true });
+
+      init();
+    })();
+  </script>
+</body>
+</html>
