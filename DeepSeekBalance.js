@@ -1,34 +1,64 @@
-// DeepSeek 余额小组件
-const KEYCHAIN_KEY = "ds_api_key";
+// DeepSeek 余额 + 消费小组件
+const KEYCHAIN_API_KEY = "ds_api_key";
+const KEYCHAIN_USER_TOKEN = "ds_user_token";
 
-// ============ 获取 API Key ============
-async function getApiKey() {
-  if (args.widgetParameter) return args.widgetParameter;
-  if (Keychain.contains(KEYCHAIN_KEY)) return Keychain.get(KEYCHAIN_KEY);
-  const p = new Prompt();
-  p.title = "DeepSeek API Key";
-  p.message = "输入你的 API Key (sk-...)";
-  p.addTextField("key", "", { placeholder: "sk-..." });
-  p.addButton("确定");
-  const didSubmit = await p.show();
-  if (!didSubmit) return null;
-  const key = p.fieldValues["key"].trim();
-  if (!key) return null;
-  Keychain.set(KEYCHAIN_KEY, key);
-  return key;
+// ============ 获取凭据 ============
+async function getCredentials() {
+  // 优先 widget 参数：API Key|UserToken（用 | 分隔）
+  const param = args.widgetParameter || "";
+  if (param.includes("|")) {
+    const parts = param.split("|");
+    return { apiKey: parts[0].trim(), userToken: parts[1].trim() };
+  }
+  if (param) {
+    return { apiKey: param, userToken: "" };
+  }
+
+  // 从 Keychain 读
+  let apiKey = "";
+  let userToken = "";
+  if (Keychain.contains(KEYCHAIN_API_KEY)) apiKey = Keychain.get(KEYCHAIN_API_KEY);
+  if (Keychain.contains(KEYCHAIN_USER_TOKEN)) userToken = Keychain.get(KEYCHAIN_USER_TOKEN);
+
+  if (apiKey || userToken) return { apiKey, userToken };
+
+  // 都没有，弹窗输入（仅在 App 内运行）
+  if (!config.runsInWidget) {
+    const p = new Prompt();
+    p.title = "DeepSeek 小组件配置";
+    p.message = "API Key（查余额）\nUser Token（查消费，可选）";
+    p.addTextField("apiKey", "", { placeholder: "sk-..." });
+    p.addTextField("userToken", "", { placeholder: "userToken（可选）" });
+    p.addButton("确定");
+    const didSubmit = await p.show();
+    if (!didSubmit) return null;
+    const ak = p.fieldValues["apiKey"].trim();
+    const ut = p.fieldValues["userToken"].trim();
+    if (ak) Keychain.set(KEYCHAIN_API_KEY, ak);
+    if (ut) Keychain.set(KEYCHAIN_USER_TOKEN, ut);
+    return { apiKey: ak, userToken: ut };
+  }
+
+  return { apiKey: "", userToken: "" };
 }
 
 // ============ 查余额 ============
 async function fetchBalance(apiKey) {
-  const url = "https://api.deepseek.com/user/balance";
-  const request = new Request(url);
-  request.headers = { "Authorization": `Bearer ${apiKey}` };
-  return await request.loadJSON();
+  const req = new Request("https://api.deepseek.com/user/balance");
+  req.headers = { "Authorization": `Bearer ${apiKey}` };
+  return await req.loadJSON();
+}
+
+// ============ 查消费 ============
+async function fetchUsage(userToken) {
+  const req = new Request("https://platform.deepseek.com/api/v0/users/get_user_summary");
+  req.headers = { "Authorization": "Bearer " + userToken };
+  return await req.loadJSON();
 }
 
 // ============ 主流程 ============
-const apiKey = await getApiKey();
-if (!apiKey) {
+const creds = await getCredentials();
+if (!creds) {
   const w = new ListWidget();
   w.addText("已取消");
   w.presentMedium();
@@ -36,47 +66,49 @@ if (!apiKey) {
   return;
 }
 
-let total = 0, toppedUp = 0, granted = 0;
-let rawData = null, error = null;
+let balanceData = null, usageData = null;
+let errors = [];
 
-try {
-  const data = await fetchBalance(apiKey);
-  rawData = data;
-  const info = data.balance_infos?.[0] || {};
-  total = parseFloat(info.total_balance ?? 0);
-  toppedUp = parseFloat(info.topped_up_balance ?? 0);
-  granted = parseFloat(info.granted_balance ?? 0);
-} catch(e) {
-  error = e.message;
+if (creds.apiKey) {
+  try { balanceData = await fetchBalance(creds.apiKey); }
+  catch(e) { errors.push("余额: " + e.message); }
 }
 
-// ============ 调试模式 ============
+if (creds.userToken) {
+  try { usageData = await fetchUsage(creds.userToken); }
+  catch(e) { errors.push("消费: " + e.message); }
+}
+
+// ============ 调试：App 内运行 ============
 if (!config.runsInWidget) {
   const w = new ListWidget();
   w.backgroundColor = new Color("#0f1117");
   w.setPadding(12, 12, 12, 12);
 
-  let t = w.addText("📡 API 原始返回");
+  let t = w.addText("📊 DeepSeek 数据");
   t.font = Font.boldSystemFont(16);
   t.textColor = new Color("#e8eaf0");
   w.addSpacer(6);
 
-  if (error) {
-    let e = w.addText("错误: " + error);
-    e.font = Font.systemFont(12);
-    e.textColor = new Color("#f87171");
-  } else {
-    let j = w.addText(JSON.stringify(rawData, null, 2));
-    j.font = Font.monospacedSystemFont(12);
-    j.textColor = new Color("#34d399");
-    w.addSpacer(8);
-    let p = w.addText(
-      "余额: " + total + "\n" +
-      "充值: " + toppedUp + "\n" +
-      "赠送: " + granted
+  if (balanceData) {
+    let b = w.addText("余额: " + JSON.stringify(balanceData.balance_infos?.[0] || {}));
+    b.font = Font.systemFont(11);
+    b.textColor = new Color("#34d399");
+    w.addSpacer(4);
+  }
+  if (usageData?.biz_data) {
+    const bd = usageData.biz_data;
+    let u = w.addText(
+      "本月消费: ¥" + parseFloat(bd.monthly_costs?.[0]?.amount || 0).toFixed(2) + "\n" +
+      "本月Token: " + parseInt(bd.monthly_token_usage || 0).toLocaleString()
     );
-    p.font = Font.systemFont(13);
-    p.textColor = new Color("#fbbf24");
+    u.font = Font.systemFont(12);
+    u.textColor = new Color("#fbbf24");
+  }
+  if (errors.length) {
+    let e = w.addText("错误: " + errors.join("\n"));
+    e.font = Font.systemFont(11);
+    e.textColor = new Color("#f87171");
   }
   w.presentMedium();
   Script.complete();
@@ -91,77 +123,99 @@ const gradient = new LinearGradient();
 gradient.locations = [0, 1];
 gradient.colors = [new Color("#1a1c26"), new Color("#0f1117")];
 widget.backgroundGradient = gradient;
-widget.setPadding(16, 16, 16, 16);
+widget.setPadding(14, 14, 14, 14);
 
-if (error) {
-  let e = widget.addText("⚠️ " + error);
-  e.font = Font.systemFont(13);
-  e.textColor = new Color("#f87171");
-  Script.complete();
-  return;
-}
+// Parse balance
+const info = balanceData?.balance_infos?.[0] || {};
+const balance = parseFloat(info.total_balance ?? balanceData?.balance ?? 0);
+const toppedUp = parseFloat(info.topped_up_balance ?? 0);
+const granted = parseFloat(info.granted_balance ?? 0);
+
+// Parse usage
+const bd = usageData?.biz_data;
+const monthlyCost = bd ? parseFloat(bd.monthly_costs?.[0]?.amount ?? 0) : null;
+const monthlyTokens = bd ? parseInt(bd.monthly_token_usage ?? 0) : null;
 
 // Title
 const titleRow = widget.addStack();
 let ti = titleRow.addText("DeepSeek");
-ti.font = Font.boldSystemFont(15);
+ti.font = Font.boldSystemFont(14);
 ti.textColor = new Color("#e8eaf0");
 titleRow.addSpacer();
-
-widget.addSpacer(6);
-
-// Balance
-const amt = widget.addStack();
-let n = amt.addText(total.toFixed(2));
-n.font = Font.boldSystemFont(40);
-n.textColor = new Color("#4f8cff");
-amt.addSpacer(4);
-let u = amt.addText("元");
-u.font = Font.systemFont(18);
-u.textColor = new Color("#8b8fa3");
+if (errors.length) {
+  let ew = titleRow.addText("!");
+  ew.font = Font.boldSystemFont(12);
+  ew.textColor = new Color("#f87171");
+}
 
 widget.addSpacer(4);
 
-// Status
-const s = widget.addStack();
-let dot = s.addText("●");
-dot.font = Font.systemFont(9);
-s.addSpacer(5);
-let st = s.addText(total > 0 ? "可用" : "已用尽");
-st.font = Font.systemFont(12);
-st.textColor = total > 0 ? new Color("#34d399") : new Color("#f87171");
+// Balance
+const amt = widget.addStack();
+let n = amt.addText(balance.toFixed(2));
+n.font = Font.boldSystemFont(34);
+n.textColor = new Color("#4f8cff");
+amt.addSpacer(4);
+let u = amt.addText("元");
+u.font = Font.systemFont(16);
+u.textColor = new Color("#8b8fa3");
+amt.addSpacer(6);
+let dot = amt.addText("●");
+dot.font = Font.systemFont(8);
+dot.textColor = balance > 0 ? new Color("#34d399") : new Color("#f87171");
+amt.addSpacer(4);
+let st = amt.addText(balance > 0 ? "可用" : "已用尽");
+st.font = Font.systemFont(11);
+st.textColor = balance > 0 ? new Color("#34d399") : new Color("#f87171");
 
-widget.addSpacer(10);
+widget.addSpacer(6);
 
-// Bottom row: topped up + granted
-const row = widget.addStack();
-row.layoutHorizontally();
+// Monthly consumption
+if (monthlyCost !== null) {
+  const costRow = widget.addStack();
+  costRow.layoutHorizontally();
 
-// Topped up
-const tc = row.addStack();
-tc.layoutVertically();
-let tl = tc.addText("充值");
-tl.font = Font.systemFont(11);
-tl.textColor = new Color("#8b8fa3");
-tc.addSpacer(2);
-let tv = tc.addText(toppedUp.toFixed(2));
-tv.font = Font.boldSystemFont(15);
-tv.textColor = new Color("#e8eaf0");
+  let cl = costRow.addText("本月");
+  cl.font = Font.systemFont(11);
+  cl.textColor = new Color("#8b8fa3");
+  costRow.addSpacer(6);
 
-row.addSpacer();
+  let cv = costRow.addText("¥" + monthlyCost.toFixed(2));
+  cv.font = Font.boldSystemFont(16);
+  cv.textColor = new Color("#e8eaf0");
+  costRow.addSpacer(10);
 
-// Granted
-const gc = row.addStack();
-gc.layoutVertically();
-let gl = gc.addText("赠送");
-gl.font = Font.systemFont(11);
-gl.textColor = new Color("#8b8fa3");
-gc.addSpacer(2);
-let gv = gc.addText(granted.toFixed(2));
-gv.font = Font.boldSystemFont(15);
-gv.textColor = granted > 0 ? new Color("#a78bfa") : new Color("#555a70");
+  let tl = costRow.addText("Token");
+  tl.font = Font.systemFont(11);
+  tl.textColor = new Color("#8b8fa3");
+  costRow.addSpacer(6);
 
-widget.addSpacer(8);
+  let tv = costRow.addText(
+    monthlyTokens >= 100000000
+      ? (monthlyTokens / 100000000).toFixed(1) + "亿"
+      : monthlyTokens >= 10000
+        ? (monthlyTokens / 10000).toFixed(0) + "万"
+        : monthlyTokens.toLocaleString()
+  );
+  tv.font = Font.boldSystemFont(16);
+  tv.textColor = new Color("#a78bfa");
+
+  widget.addSpacer(4);
+
+  // Wallet info
+  const walRow = widget.addStack();
+  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
+  wl.font = Font.systemFont(9);
+  wl.textColor = new Color("#555a70");
+} else {
+  // No usage data, show wallet info in main area
+  const walRow = widget.addStack();
+  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "   |   赠送 " + granted.toFixed(2));
+  wl.font = Font.systemFont(9);
+  wl.textColor = new Color("#555a70");
+}
+
+widget.addSpacer(6);
 
 // Timestamp
 const now = new Date();
@@ -169,9 +223,10 @@ const ts = now.getHours().toString().padStart(2,"0") + ":" +
             now.getMinutes().toString().padStart(2,"0") + ":" +
             now.getSeconds().toString().padStart(2,"0");
 let ft = widget.addText("更新于 " + ts);
-ft.font = Font.systemFont(9);
+ft.font = Font.systemFont(8);
 ft.textColor = new Color("#3f4359");
 
+// Refresh after 10 min
 widget.refreshAfterDate = new Date(Date.now() + 10 * 60 * 1000);
 
 Script.setWidget(widget);
