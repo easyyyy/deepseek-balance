@@ -1,4 +1,4 @@
-// v1.1
+// v1.2
 const param = args.widgetParameter || "";
 let apiKey = "", userToken = "";
 
@@ -68,15 +68,24 @@ st.textColor = new Color("#34d399");
 
 if (cost != null) {
   w.addSpacer(6);
-  let lbl = w.addText("本月");
-  lbl.font = Font.systemFont(11);
-  lbl.textColor = new Color("#8b8fa3");
+  // Labels row
+  const rowL = w.addStack();
+  let lb1 = rowL.addText("本月");
+  lb1.font = Font.systemFont(11);
+  lb1.textColor = new Color("#8b8fa3");
+  rowL.addSpacer();
+  let lb2 = rowL.addText("Token");
+  lb2.font = Font.systemFont(11);
+  lb2.textColor = new Color("#8b8fa3");
+
   w.addSpacer(2);
+
+  // Values row
   const row2 = w.addStack();
   let v1 = row2.addText("¥" + cost.toFixed(2));
   v1.font = Font.boldSystemFont(16);
   v1.textColor = new Color("#e8eaf0");
-  row2.addSpacer(10);
+  row2.addSpacer();
   let v2 = row2.addText(
     tokens >= 100000000 ? (tokens/100000000).toFixed(1)+"亿" :
     tokens >= 10000 ? (tokens/10000).toFixed(0)+"万" :
