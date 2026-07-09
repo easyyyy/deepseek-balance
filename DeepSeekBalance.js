@@ -26,16 +26,17 @@ async function getCredentials() {
 
   // 都没有：App 内运行时弹窗输入
   if (!config.runsInWidget) {
-    const p = new Prompt();
-    p.title = "DeepSeek 小组件配置";
-    p.message = "API Key（查余额）\nUser Token（查消费，可选）";
-    p.addTextField("apiKey", "", { placeholder: "sk-..." });
-    p.addTextField("userToken", "", { placeholder: "userToken（可选）" });
-    p.addButton("确定");
-    const didSubmit = await p.show();
-    if (!didSubmit) return null;
-    const ak = p.fieldValues["apiKey"].trim();
-    const ut = p.fieldValues["userToken"].trim();
+    const a = new Alert();
+    a.title = "DeepSeek 小组件配置";
+    a.message = "API Key（查余额）\nUser Token（查消费，可选）";
+    a.addTextField("sk-...");
+    a.addTextField("userToken（可选）");
+    a.addAction("确定");
+    a.addCancelAction("取消");
+    const didSubmit = await a.presentAlert();
+    if (didSubmit === -1) return null;
+    const ak = a.textFieldValue(0).trim();
+    const ut = a.textFieldValue(1).trim();
     if (ak) Keychain.set(KEYCHAIN_API_KEY, ak);
     if (ut) Keychain.set(KEYCHAIN_USER_TOKEN, ut);
     return { apiKey: ak, userToken: ut };
