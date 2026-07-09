@@ -4,25 +4,27 @@ const KEYCHAIN_USER_TOKEN = "ds_user_token";
 
 // ============ 获取凭据 ============
 async function getCredentials() {
-  // 优先 widget 参数：API Key|UserToken（用 | 分隔）
   const param = args.widgetParameter || "";
+
+  // 情况1: widget参数带 | 分隔（API Key | User Token）
   if (param.includes("|")) {
     const parts = param.split("|");
     return { apiKey: parts[0].trim(), userToken: parts[1].trim() };
   }
+
+  // 情况2: widget参数只有 API Key，userToken 从 Keychain 读
   if (param) {
-    return { apiKey: param, userToken: "" };
+    const ut = Keychain.contains(KEYCHAIN_USER_TOKEN) ? Keychain.get(KEYCHAIN_USER_TOKEN) : "";
+    return { apiKey: param, userToken: ut };
   }
 
-  // 从 Keychain 读
-  let apiKey = "";
-  let userToken = "";
-  if (Keychain.contains(KEYCHAIN_API_KEY)) apiKey = Keychain.get(KEYCHAIN_API_KEY);
-  if (Keychain.contains(KEYCHAIN_USER_TOKEN)) userToken = Keychain.get(KEYCHAIN_USER_TOKEN);
+  // 情况3: 无 widget 参数，都从 Keychain 读
+  const apiKey = Keychain.contains(KEYCHAIN_API_KEY) ? Keychain.get(KEYCHAIN_API_KEY) : "";
+  const userToken = Keychain.contains(KEYCHAIN_USER_TOKEN) ? Keychain.get(KEYCHAIN_USER_TOKEN) : "";
 
   if (apiKey || userToken) return { apiKey, userToken };
 
-  // 都没有，弹窗输入（仅在 App 内运行）
+  // 都没有：App 内运行时弹窗输入
   if (!config.runsInWidget) {
     const p = new Prompt();
     p.title = "DeepSeek 小组件配置";
@@ -90,6 +92,12 @@ if (!config.runsInWidget) {
   t.textColor = new Color("#e8eaf0");
   w.addSpacer(6);
 
+  w.addText("API Key: " + (creds.apiKey ? "✅" : "❌")).font = Font.systemFont(11);
+  w.addText("").textColor = new Color("#e8eaf0");
+  w.addText("User Token: " + (creds.userToken ? "✅" : "❌")).font = Font.systemFont(11);
+  w.addText("").textColor = new Color("#e8eaf0");
+  w.addSpacer(4);
+
   if (balanceData) {
     let b = w.addText("余额: " + JSON.stringify(balanceData.balance_infos?.[0] || {}));
     b.font = Font.systemFont(11);
@@ -115,7 +123,7 @@ if (!config.runsInWidget) {
   return;
 }
 
-// ============ 小组件 ============
+// ============ 小组件模式 ============
 const widget = new ListWidget();
 widget.backgroundColor = new Color("#0f1117");
 
@@ -125,13 +133,11 @@ gradient.colors = [new Color("#1a1c26"), new Color("#0f1117")];
 widget.backgroundGradient = gradient;
 widget.setPadding(14, 14, 14, 14);
 
-// Parse balance
 const info = balanceData?.balance_infos?.[0] || {};
 const balance = parseFloat(info.total_balance ?? balanceData?.balance ?? 0);
 const toppedUp = parseFloat(info.topped_up_balance ?? 0);
 const granted = parseFloat(info.granted_balance ?? 0);
 
-// Parse usage
 const bd = usageData?.biz_data;
 const monthlyCost = bd ? parseFloat(bd.monthly_costs?.[0]?.amount ?? 0) : null;
 const monthlyTokens = bd ? parseInt(bd.monthly_token_usage ?? 0) : null;
@@ -170,26 +176,21 @@ st.textColor = balance > 0 ? new Color("#34d399") : new Color("#f87171");
 
 widget.addSpacer(6);
 
-// Monthly consumption
 if (monthlyCost !== null) {
+  // Monthly consumption
   const costRow = widget.addStack();
-  costRow.layoutHorizontally();
-
   let cl = costRow.addText("本月");
   cl.font = Font.systemFont(11);
   cl.textColor = new Color("#8b8fa3");
   costRow.addSpacer(6);
-
   let cv = costRow.addText("¥" + monthlyCost.toFixed(2));
   cv.font = Font.boldSystemFont(16);
   cv.textColor = new Color("#e8eaf0");
   costRow.addSpacer(10);
-
   let tl = costRow.addText("Token");
   tl.font = Font.systemFont(11);
   tl.textColor = new Color("#8b8fa3");
   costRow.addSpacer(6);
-
   let tv = costRow.addText(
     monthlyTokens >= 100000000
       ? (monthlyTokens / 100000000).toFixed(1) + "亿"
@@ -201,23 +202,18 @@ if (monthlyCost !== null) {
   tv.textColor = new Color("#a78bfa");
 
   widget.addSpacer(4);
-
-  // Wallet info
-  const walRow = widget.addStack();
-  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
+  let wl = widget.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
   wl.font = Font.systemFont(9);
   wl.textColor = new Color("#555a70");
 } else {
-  // No usage data, show wallet info in main area
   const walRow = widget.addStack();
-  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "   |   赠送 " + granted.toFixed(2));
+  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
   wl.font = Font.systemFont(9);
   wl.textColor = new Color("#555a70");
 }
 
 widget.addSpacer(6);
 
-// Timestamp
 const now = new Date();
 const ts = now.getHours().toString().padStart(2,"0") + ":" +
             now.getMinutes().toString().padStart(2,"0") + ":" +
@@ -226,7 +222,6 @@ let ft = widget.addText("更新于 " + ts);
 ft.font = Font.systemFont(8);
 ft.textColor = new Color("#3f4359");
 
-// Refresh after 10 min
 widget.refreshAfterDate = new Date(Date.now() + 10 * 60 * 1000);
 
 Script.setWidget(widget);
