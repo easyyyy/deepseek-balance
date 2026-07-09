@@ -1,4 +1,4 @@
-// DeepSeek 余额 + 消费小组件
+// DeepSeek 余额 + 消费小组件 - 无需弹窗版
 const KEYCHAIN_API_KEY = "ds_api_key";
 const KEYCHAIN_USER_TOKEN = "ds_user_token";
 
@@ -6,43 +6,23 @@ const KEYCHAIN_USER_TOKEN = "ds_user_token";
 async function getCredentials() {
   const param = args.widgetParameter || "";
 
-  // 情况1: widget参数带 | 分隔（API Key | User Token）
+  // widget 参数支持两种格式：
+  // 1. "API Key" — 仅余额
+  // 2. "API Key|User Token" — 余额 + 消费
+
   if (param.includes("|")) {
     const parts = param.split("|");
     return { apiKey: parts[0].trim(), userToken: parts[1].trim() };
   }
 
-  // 情况2: widget参数只有 API Key，userToken 从 Keychain 读
   if (param) {
     const ut = Keychain.contains(KEYCHAIN_USER_TOKEN) ? Keychain.get(KEYCHAIN_USER_TOKEN) : "";
     return { apiKey: param, userToken: ut };
   }
 
-  // 情况3: 无 widget 参数，都从 Keychain 读
   const apiKey = Keychain.contains(KEYCHAIN_API_KEY) ? Keychain.get(KEYCHAIN_API_KEY) : "";
   const userToken = Keychain.contains(KEYCHAIN_USER_TOKEN) ? Keychain.get(KEYCHAIN_USER_TOKEN) : "";
-
-  if (apiKey || userToken) return { apiKey, userToken };
-
-  // 都没有：App 内运行时弹窗输入
-  if (!config.runsInWidget) {
-    const a = new Alert();
-    a.title = "DeepSeek 小组件配置";
-    a.message = "API Key（查余额）\nUser Token（查消费，可选）";
-    a.addTextField("sk-...");
-    a.addTextField("userToken（可选）");
-    a.addAction("确定");
-    a.addCancelAction("取消");
-    const didSubmit = await a.presentAlert();
-    if (didSubmit === -1) return null;
-    const ak = a.textFieldValue(0).trim();
-    const ut = a.textFieldValue(1).trim();
-    if (ak) Keychain.set(KEYCHAIN_API_KEY, ak);
-    if (ut) Keychain.set(KEYCHAIN_USER_TOKEN, ut);
-    return { apiKey: ak, userToken: ut };
-  }
-
-  return { apiKey: "", userToken: "" };
+  return { apiKey, userToken };
 }
 
 // ============ 查余额 ============
@@ -61,13 +41,6 @@ async function fetchUsage(userToken) {
 
 // ============ 主流程 ============
 const creds = await getCredentials();
-if (!creds) {
-  const w = new ListWidget();
-  w.addText("已取消");
-  w.presentMedium();
-  Script.complete();
-  return;
-}
 
 let balanceData = null, usageData = null;
 let errors = [];
@@ -82,49 +55,36 @@ if (creds.userToken) {
   catch(e) { errors.push("消费: " + e.message); }
 }
 
-// ============ 调试：App 内运行 ============
+// ============ 调试视图 ============
 if (!config.runsInWidget) {
   const w = new ListWidget();
   w.backgroundColor = new Color("#0f1117");
   w.setPadding(12, 12, 12, 12);
-
   let t = w.addText("📊 DeepSeek 数据");
   t.font = Font.boldSystemFont(16);
   t.textColor = new Color("#e8eaf0");
   w.addSpacer(6);
-
   w.addText("API Key: " + (creds.apiKey ? "✅" : "❌")).font = Font.systemFont(11);
-  w.addText("").textColor = new Color("#e8eaf0");
   w.addText("User Token: " + (creds.userToken ? "✅" : "❌")).font = Font.systemFont(11);
-  w.addText("").textColor = new Color("#e8eaf0");
   w.addSpacer(4);
-
   if (balanceData) {
-    let b = w.addText("余额: " + JSON.stringify(balanceData.balance_infos?.[0] || {}));
-    b.font = Font.systemFont(11);
-    b.textColor = new Color("#34d399");
-    w.addSpacer(4);
+    const info = balanceData.balance_infos?.[0] || {};
+    w.addText("余额: " + (info.total_balance || "?")).font = Font.systemFont(11);
   }
   if (usageData?.biz_data) {
     const bd = usageData.biz_data;
-    let u = w.addText(
-      "本月消费: ¥" + parseFloat(bd.monthly_costs?.[0]?.amount || 0).toFixed(2) + "\n" +
-      "本月Token: " + parseInt(bd.monthly_token_usage || 0).toLocaleString()
-    );
-    u.font = Font.systemFont(12);
-    u.textColor = new Color("#fbbf24");
+    w.addText("本月消费: ¥" + parseFloat(bd.monthly_costs?.[0]?.amount || 0).toFixed(2)).font = Font.systemFont(11);
+    w.addText("本月Token: " + parseInt(bd.monthly_token_usage || 0).toLocaleString()).font = Font.systemFont(11);
   }
   if (errors.length) {
-    let e = w.addText("错误: " + errors.join("\n"));
-    e.font = Font.systemFont(11);
-    e.textColor = new Color("#f87171");
+    w.addText("错误: " + errors.join(", ")).font = Font.systemFont(11);
   }
   w.presentMedium();
   Script.complete();
   return;
 }
 
-// ============ 小组件模式 ============
+// ============ 小组件 ============
 const widget = new ListWidget();
 widget.backgroundColor = new Color("#0f1117");
 
@@ -178,7 +138,6 @@ st.textColor = balance > 0 ? new Color("#34d399") : new Color("#f87171");
 widget.addSpacer(6);
 
 if (monthlyCost !== null) {
-  // Monthly consumption
   const costRow = widget.addStack();
   let cl = costRow.addText("本月");
   cl.font = Font.systemFont(11);
