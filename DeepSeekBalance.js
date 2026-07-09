@@ -161,15 +161,6 @@ if (monthlyCost !== null) {
   tv.font = Font.boldSystemFont(16);
   tv.textColor = new Color("#a78bfa");
 
-  widget.addSpacer(4);
-  let wl = widget.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
-  wl.font = Font.systemFont(9);
-  wl.textColor = new Color("#555a70");
-} else {
-  const walRow = widget.addStack();
-  let wl = walRow.addText("充值 " + toppedUp.toFixed(2) + "  |  赠送 " + granted.toFixed(2));
-  wl.font = Font.systemFont(9);
-  wl.textColor = new Color("#555a70");
 }
 
 widget.addSpacer(6);
