@@ -1,79 +1,104 @@
 // v1.0
-const p = args.widgetParameter || "";
-const s = p.split("|");
-const key = s[0] || "";
-const tok = s[1] || "";
+const param = args.widgetParameter || "";
+let apiKey = "", userToken = "";
 
-let bal = 0, cost = null, tks = null;
-if (key) {
+if (param.includes("|")) {
+  const parts = param.split("|");
+  apiKey = parts[0].trim();
+  userToken = parts[1].trim();
+} else {
+  apiKey = param;
+}
+
+let balance = 0, cost = null, tokens = null;
+
+if (apiKey) {
   try {
-    const r = new Request("https://api.deepseek.com/user/balance");
-    r.headers = { Authorization: "Bearer " + key };
-    const d = await r.loadJSON();
-    bal = parseFloat(d.balance_infos?.[0]?.total_balance || 0);
+    const r1 = new Request("https://api.deepseek.com/user/balance");
+    r1.headers = { Authorization: "Bearer " + apiKey };
+    const d1 = await r1.loadJSON();
+    balance = parseFloat(d1.balance_infos?.[0]?.total_balance || 0);
   } catch(e) {}
 }
-if (tok) {
+
+if (userToken) {
   try {
-    const r = new Request("https://platform.deepseek.com/api/v0/users/get_user_summary");
-    r.headers = { Authorization: "Bearer " + tok };
-    const d = await r.loadJSON();
-    if (d.code === 0) {
-      cost = parseFloat(d.data.biz_data.monthly_costs[0].amount || 0);
-      tks = parseInt(d.data.biz_data.monthly_token_usage || 0);
+    const r2 = new Request("https://platform.deepseek.com/api/v0/users/get_user_summary");
+    r2.headers = { Authorization: "Bearer " + userToken };
+    const d2 = await r2.loadJSON();
+    if (d2.code === 0) {
+      cost = parseFloat(d2.data.biz_data.monthly_costs[0].amount);
+      tokens = parseInt(d2.data.biz_data.monthly_token_usage);
     }
   } catch(e) {}
 }
 
-if (!config.runsInWidget) {
-  const w = new ListWidget();
-  w.backgroundColor = new Color("#111");
-  w.setPadding(10, 10, 10, 10);
-  w.addText("Key: " + (key ? "OK" : "NO")).font = Font.systemFont(12);
-  w.addText("Tkn: " + (tok ? "OK" : "NO")).font = Font.systemFont(12);
-  if (cost != null) {
-    w.addText("消费: " + cost.toFixed(2)).font = Font.systemFont(12);
-    w.addText("Tokens: " + (tks || 0)).font = Font.systemFont(12);
-  }
-  w.presentMedium();
-  Script.complete();
-}
-
 const w = new ListWidget();
 w.backgroundColor = new Color("#0f1117");
+const g = new LinearGradient();
+g.locations = [0, 1];
+g.colors = [new Color("#1a1c26"), new Color("#0f1117")];
+w.backgroundGradient = g;
 w.setPadding(14, 14, 14, 14);
 
-const r1 = w.addStack();
-r1.addText("DeepSeek").font = Font.boldSystemFont(14);
-r1.addText("").textColor = Color.white();
+// Title
+let t = w.addText("DeepSeek");
+t.font = Font.boldSystemFont(14);
+t.textColor = new Color("#e8eaf0");
 
 w.addSpacer(6);
 
-const r2 = w.addStack();
-r2.addText(bal.toFixed(2)).font = Font.boldSystemFont(34);
-r2.addText("").textColor = Color.blue();
-r2.addSpacer(4);
-r2.addText("元").font = Font.systemFont(16);
-r2.addText("").textColor = new Color("#888");
-
-w.addSpacer(6);
+// Balance
+const row1 = w.addStack();
+let n = row1.addText(balance.toFixed(2));
+n.font = Font.boldSystemFont(34);
+n.textColor = new Color("#4f8cff");
+row1.addSpacer(4);
+let u = row1.addText("元");
+u.font = Font.systemFont(16);
+u.textColor = new Color("#8b8fa3");
+row1.addSpacer(6);
+let dot = row1.addText("●");
+dot.font = Font.systemFont(8);
+dot.textColor = new Color("#34d399");
+row1.addSpacer(4);
+let st = row1.addText("可用");
+st.font = Font.systemFont(11);
+st.textColor = new Color("#34d399");
 
 if (cost != null) {
-  const r3 = w.addStack();
-  r3.addText("本月 " + cost.toFixed(2)).font = Font.systemFont(13);
-  r3.addText("").textColor = Color.white();
-  r3.addSpacer(8);
-  const ts = tks >= 10000 ? (tks/10000).toFixed(0)+"万" : (tks||0).toString();
-  r3.addText(ts).font = Font.systemFont(13);
-  r3.addText("").textColor = new Color("#a78bfa");
+  w.addSpacer(6);
+  const row2 = w.addStack();
+  let l1 = row2.addText("本月 ");
+  l1.font = Font.systemFont(11);
+  l1.textColor = new Color("#8b8fa3");
+  let v1 = row2.addText("¥" + cost.toFixed(2));
+  v1.font = Font.boldSystemFont(16);
+  v1.textColor = new Color("#e8eaf0");
+  row2.addSpacer(10);
+  let l2 = row2.addText("Token ");
+  l2.font = Font.systemFont(11);
+  l2.textColor = new Color("#8b8fa3");
+  let v2 = row2.addText(
+    tokens >= 100000000 ? (tokens/100000000).toFixed(1)+"亿" :
+    tokens >= 10000 ? (tokens/10000).toFixed(0)+"万" :
+    tokens.toLocaleString()
+  );
+  v2.font = Font.boldSystemFont(16);
+  v2.textColor = new Color("#a78bfa");
 }
 
-w.addSpacer(6);
+w.addSpacer(8);
 
-const n = new Date();
-w.addText(n.getHours()+":"+n.getMinutes()).font = Font.systemFont(9);
-w.addText("").textColor = new Color("#555");
+const now = new Date();
+let ft = w.addText(
+  now.getHours().toString().padStart(2,"0") + ":" +
+  now.getMinutes().toString().padStart(2,"0") + ":" +
+  now.getSeconds().toString().padStart(2,"0")
+);
+ft.font = Font.systemFont(8);
+ft.textColor = new Color("#3f4359");
 
-w.refreshAfterDate = new Date(Date.now() + 600000);
+w.refreshAfterDate = new Date(Date.now() + 10 * 60 * 1000);
 Script.setWidget(w);
 Script.complete();
