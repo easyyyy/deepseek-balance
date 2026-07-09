@@ -96,8 +96,6 @@ widget.setPadding(14, 14, 14, 14);
 
 const info = balanceData?.balance_infos?.[0] || {};
 const balance = parseFloat(info.total_balance ?? balanceData?.balance ?? 0);
-const toppedUp = parseFloat(info.topped_up_balance ?? 0);
-const granted = parseFloat(info.granted_balance ?? 0);
 
 const bd = usageData?.biz_data;
 const monthlyCost = bd ? parseFloat(bd.monthly_costs?.[0]?.amount ?? 0) : null;
