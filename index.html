@@ -320,7 +320,17 @@
       <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
       <button id="saveBtn">保存</button>
     </div>
-    <div class="key-hint">Key 仅保存在你手机本地，不会上传到任何服务器</div>
+    <div class="key-hint">查余额用 · Key 仅保存在手机本地</div>
+  </div>
+
+  <!-- User Token -->
+  <div class="card key-section" style="margin-top:-8px;">
+    <label for="userToken">User Token（可选）</label>
+    <div class="key-row">
+      <input type="password" id="userToken" placeholder="粘贴 userToken..." autocomplete="off">
+      <button id="saveTokenBtn">保存</button>
+    </div>
+    <div class="key-hint">查本月消费用 · 在 DeepSeek 网页 F12 → Console 输入 <code style="background:#2f3346;padding:1px 6px;border-radius:4px;font-size:11px;">copy(JSON.parse(localStorage.userToken).value)</code> 获取</div>
   </div>
 
   <!-- Error -->
@@ -349,15 +359,20 @@
 
   <!-- Info Grid -->
   <div class="card" style="padding:20px 20px 8px;">
-    <div class="info-grid">
+    <div class="info-grid" style="grid-template-columns:1fr 1fr 1fr;">
       <div class="info-item">
-        <div class="label">充值余额</div>
-        <div class="value" id="toppedUpAmount">--</div>
+        <div class="label">本月消费</div>
+        <div class="value" id="monthlyCost" style="font-size:16px;">--</div>
+        <div class="value sub" id="monthlyTokens" style="font-size:11px;">-- tokens</div>
+      </div>
+      <div class="info-item">
+        <div class="label">充值</div>
+        <div class="value" id="toppedUpAmount" style="font-size:16px;">--</div>
         <div class="value sub">赠送 <span id="grantedAmount">--</span></div>
       </div>
       <div class="info-item">
-        <div class="label">余额状态</div>
-        <div class="value" id="balanceState">--</div>
+        <div class="label">状态</div>
+        <div class="value" id="balanceState" style="font-size:16px;">--</div>
         <div class="value sub" id="suggestTopup"></div>
       </div>
     </div>
@@ -398,13 +413,16 @@
   <script>
     (function() {
       const API_KEY_STORAGE = 'ds_balance_key';
+      const USER_TOKEN_STORAGE = 'ds_user_token';
       const BALANCE_CACHE = 'ds_balance_cache';
-      const CACHE_DURATION = 60 * 1000; // 1 min
+      const CACHE_DURATION = 60 * 1000;
 
       const $ = id => document.getElementById(id);
 
       const apiKeyInput = $('apiKey');
       const saveBtn = $('saveBtn');
+      const userTokenInput = $('userToken');
+      const saveTokenBtn = $('saveTokenBtn');
       const errorMsg = $('errorMsg');
       const refreshBtn = $('refreshBtn');
       const balanceSkeleton = $('balanceSkeleton');
@@ -414,18 +432,17 @@
       const statusText = $('statusText');
       const toppedUpAmount = $('toppedUpAmount');
       const grantedAmount = $('grantedAmount');
+      const monthlyCost = $('monthlyCost');
+      const monthlyTokens = $('monthlyTokens');
       const balanceState = $('balanceState');
       const suggestTopup = $('suggestTopup');
-      const debugOutput = document.getElementById('debugOutput');
-      const debugParseInfo = document.getElementById('debugParseInfo');
-      const debugTitle = document.getElementById('debugTitle');
       const lastUpdate = $('lastUpdate');
 
-      // ---- Load saved key ----
+      // ---- Load saved ----
       const savedKey = localStorage.getItem(API_KEY_STORAGE);
-      if (savedKey) {
-        apiKeyInput.value = savedKey;
-      }
+      if (savedKey) apiKeyInput.value = savedKey;
+      const savedToken = localStorage.getItem(USER_TOKEN_STORAGE);
+      if (savedToken) userTokenInput.value = savedToken;
 
       // ---- Show error ----
       function showError(msg) {
@@ -471,10 +488,10 @@
         return await resp.json();
       }
 
-      // ---- Render balance ----
-      function renderBalance(data) {
-        const info = data.balance_infos?.[0] || {};
-        const balance = parseFloat(info.total_balance ?? data.balance ?? 0);
+      // ---- Render all data ----
+      function renderAll(balanceData, usageData) {
+        const info = balanceData?.balance_infos?.[0] || {};
+        const balance = parseFloat(info.total_balance ?? 0);
         const toppedUp = parseFloat(info.topped_up_balance ?? 0);
         const granted = parseFloat(info.granted_balance ?? 0);
 
@@ -483,7 +500,7 @@
         // Status
         if (balance <= 0) {
           balanceStatus.className = 'balance-status empty';
-          statusText.textContent = '余额已用尽';
+          statusText.textContent = '已用尽';
           balanceState.textContent = '已用尽';
           suggestTopup.textContent = '如需使用请充值';
         } else {
@@ -496,11 +513,24 @@
         toppedUpAmount.textContent = fmtCurrency(toppedUp);
         grantedAmount.textContent = fmtCurrency(granted);
 
-        // Cache
+        // Usage data
+        if (usageData?.biz_data) {
+          const bd = usageData.biz_data;
+          const cost = parseFloat(bd.monthly_costs?.[0]?.amount ?? 0);
+          const tokens = parseInt(bd.monthly_token_usage ?? 0);
+          monthlyCost.textContent = '¥' + cost.toFixed(2);
+          monthlyTokens.textContent = (tokens >= 100000000
+            ? (tokens / 100000000).toFixed(2) + ' 亿'
+            : tokens >= 10000
+              ? (tokens / 10000).toFixed(0) + ' 万'
+              : tokens.toLocaleString()) + ' tokens';
+        } else {
+          monthlyCost.textContent = '--';
+          monthlyTokens.textContent = '需配置 User Token';
+        }
+
         const cache = { balance, toppedUp, granted, timestamp: Date.now() };
-        try {
-          localStorage.setItem(BALANCE_CACHE, JSON.stringify(cache));
-        } catch(e) { /* ignore */ }
+        try { localStorage.setItem(BALANCE_CACHE, JSON.stringify(cache)); } catch(e) {}
 
         lastUpdate.textContent = '上次更新: ' + fmtTime(Date.now());
       }
@@ -533,69 +563,91 @@
         } catch(e) { return false; }
       }
 
-      // ---- Main fetch ----
-      async function fetchBalance(apiKey) {
-        hideError();
-        showLoading();
+      // ---- Query usage ----
+      async function queryUsage(userToken) {
+        const resp = await fetch('https://platform.deepseek.com/api/v0/users/get_user_summary', {
+          headers: { 'Authorization': 'Bearer ' + userToken }
+        });
+        if (!resp.ok) throw new Error('消费查询失败 (' + resp.status + ')');
+        return await resp.json();
+      }
 
-        try {
-          const data = await queryBalance(apiKey);
-          renderBalance(data);
+      // ---- Main fetch ----
+      async function fetchAll() {
+        hideError();
+        balanceSkeleton.style.display = 'block';
+        balanceContent.style.display = 'none';
+        refreshBtn.classList.add('loading');
+        refreshBtn.disabled = true;
+
+        const apiKey = localStorage.getItem(API_KEY_STORAGE);
+        const userToken = localStorage.getItem(USER_TOKEN_STORAGE);
+
+        let balanceData = null;
+        let usageData = null;
+
+        // Fetch balance
+        if (apiKey) {
+          try {
+            balanceData = await queryBalance(apiKey);
+          } catch (err) {
+            showError('余额: ' + err.message);
+          }
+        }
+
+        // Fetch usage
+        if (userToken) {
+          try {
+            usageData = await queryUsage(userToken);
+          } catch (err) {
+            showError('消费: ' + err.message);
+          }
+        }
+
+        if (balanceData || usageData) {
+          renderAll(balanceData, usageData);
           balanceSkeleton.style.display = 'none';
           balanceContent.style.display = 'block';
-        } catch (err) {
-          showError(err.message);
-          // Fall back to cache if available
-          if (!loadCache()) {
-            balanceSkeleton.style.display = 'none';
-            balanceContent.style.display = 'block';
-            balanceNum.textContent = '--';
-            statusText.textContent = '加载失败';
-            balanceStatus.className = 'balance-status empty';
-          }
-        } finally {
-          refreshBtn.classList.remove('loading');
-          refreshBtn.disabled = false;
+        } else if (!loadCache()) {
+          balanceSkeleton.style.display = 'none';
+          balanceContent.style.display = 'block';
+          balanceNum.textContent = '--';
+          statusText.textContent = '加载失败';
+          balanceStatus.className = 'balance-status empty';
+          if (!apiKey) showError('请先输入 API Key');
         }
+
+        refreshBtn.classList.remove('loading');
+        refreshBtn.disabled = false;
       }
 
       // ---- Actions ----
       function saveKey() {
         const key = apiKeyInput.value.trim();
-        if (!key) {
-          showError('请输入 API Key');
-          return;
-        }
-        if (!key.startsWith('sk-')) {
-          showError('Key 格式似乎不对，应以 sk- 开头');
-          return;
-        }
+        if (!key) { showError('请输入 API Key'); return; }
         localStorage.setItem(API_KEY_STORAGE, key);
         hideError();
-        fetchBalance(key);
+        fetchAll();
       }
 
-      function refresh() {
-        const key = localStorage.getItem(API_KEY_STORAGE);
-        if (!key) {
-          showError('请先输入并保存 API Key');
-          return;
-        }
-        apiKeyInput.value = key;
-        fetchBalance(key);
+      function saveToken() {
+        const token = userTokenInput.value.trim();
+        if (!token) { showError('请输入 User Token'); return; }
+        localStorage.setItem(USER_TOKEN_STORAGE, token);
+        hideError();
+        fetchAll();
       }
+
+      function refresh() { fetchAll(); }
 
       // ---- Init ----
       function init() {
-        // Load cached display first
         const hasCache = loadCache();
 
         const key = localStorage.getItem(API_KEY_STORAGE);
         if (key) {
-          // Auto fetch on load (after cache is shown)
-          setTimeout(() => fetchBalance(key), 300);
+          setTimeout(() => fetchAll(), 300);
         } else if (!hasCache) {
-          // Show empty state
           balanceSkeleton.style.display = 'none';
           balanceContent.style.display = 'block';
           balanceNum.textContent = '--';
@@ -604,94 +656,11 @@
           balanceState.textContent = '请先输入 API Key';
         }
 
-        // ---- Debug: show raw API response ----
-        async function showDebug() {
-          const key = localStorage.getItem(API_KEY_STORAGE);
-          if (!key) {
-            debugOutput.textContent = '请先保存 API Key';
-            debugParseInfo.textContent = '';
-            debugCard.style.display = 'block';
-            return;
-          }
-          await fetchAndShow('https://api.deepseek.com/user/balance', '📡 余额 API');
-        }
-
-        async function showUsage() {
-          const key = localStorage.getItem(API_KEY_STORAGE);
-          if (!key) {
-            debugOutput.textContent = '请先保存 API Key';
-            debugParseInfo.textContent = '';
-            debugCard.style.display = 'block';
-            return;
-          }
-          // 试几个可能的消费接口
-          const endpoints = [
-            'https://api.deepseek.com/user/usage',
-            'https://api.deepseek.com/billing/usage',
-            'https://api.deepseek.com/dashboard/billing/usage',
-          ];
-          let results = '';
-          for (const url of endpoints) {
-            try {
-              const resp = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${key}` }
-              });
-              const status = resp.status;
-              const text = await resp.text().catch(() => '');
-              let display = text.slice(0, 500);
-              try { display = JSON.stringify(JSON.parse(text), null, 2); } catch(e) {}
-              results += `>>> ${url}\n状态码: ${status}\n${display}\n\n`;
-            } catch(e) {
-              results += `>>> ${url}\n请求失败: ${e.message}\n\n`;
-            }
-          }
-          debugTitle.textContent = '💳 消费接口测试';
-          debugOutput.textContent = results;
-          debugParseInfo.textContent = '以上是 DeepSeek 可能存在的消费 API，看看哪个返回了数据';
-          debugCard.style.display = 'block';
-        }
-
-        async function fetchAndShow(url, title) {
-          const key = localStorage.getItem(API_KEY_STORAGE);
-          debugTitle.textContent = title;
-          try {
-            const resp = await fetch(url, {
-              headers: { 'Authorization': `Bearer ${key}` }
-            });
-            const data = await resp.json();
-            debugOutput.textContent = JSON.stringify(data, null, 2);
-            let parseInfo = '解析结果:\n';
-            if (data.balance_infos) {
-              data.balance_infos.forEach((b, i) => {
-                parseInfo += `[${i}] ` + Object.keys(b).map(k => `${k}=${b[k]}`).join(', ') + '\n';
-              });
-            } else {
-              Object.keys(data).forEach(k => {
-                const v = data[k];
-                if (typeof v === 'object') parseInfo += `  ${k}=${JSON.stringify(v).slice(0,200)}\n`;
-                else parseInfo += `  ${k}=${v}\n`;
-              });
-            }
-            debugParseInfo.textContent = parseInfo;
-          } catch(e) {
-            debugOutput.textContent = '请求失败: ' + e.message;
-            debugParseInfo.textContent = '';
-          }
-          debugCard.style.display = 'block';
-        }
-
-        document.getElementById('debugBtn').addEventListener('click', showDebug);
-        document.getElementById('usageBtn').addEventListener('click', showUsage);
-        document.getElementById('closeDebug').addEventListener('click', () => {
-          debugCard.style.display = 'none';
-        });
-
-        // Events
         saveBtn.addEventListener('click', saveKey);
+        saveTokenBtn.addEventListener('click', saveToken);
         refreshBtn.addEventListener('click', refresh);
-        apiKeyInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') saveKey();
-        });
+        apiKeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
+        userTokenInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveToken(); });
       }
 
       // iOS home screen gesture protection
