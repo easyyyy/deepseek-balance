@@ -309,7 +309,7 @@
 <body>
 
   <div class="header">
-    <h1>🧠 DeepSeek 余额</h1>
+    <h1>DeepSeek 余额</h1>
     <p>实时查询 API 账户余额</p>
   </div>
 
@@ -351,9 +351,9 @@
   <div class="card" style="padding:20px 20px 8px;">
     <div class="info-grid">
       <div class="info-item">
-        <div class="label">已用额度</div>
-        <div class="value" id="usedAmount">--</div>
-        <div class="value sub">总充值 <span id="totalRecharge">--</span></div>
+        <div class="label">充值余额</div>
+        <div class="value" id="toppedUpAmount">--</div>
+        <div class="value sub">赠送 <span id="grantedAmount">--</span></div>
       </div>
       <div class="info-item">
         <div class="label">余额状态</div>
@@ -369,15 +369,20 @@
     <span>刷新余额</span>
   </button>
 
-  <!-- Debug Toggle -->
-  <button class="refresh-btn" id="debugBtn" style="margin-top:8px; background:transparent; border:1px solid #2f3346; padding:8px; font-size:12px; color:#8b8fa3;">
-    <span>🔍 查看 API 原始数据</span>
-  </button>
+  <!-- Try endpoints -->
+  <div style="display:flex; gap:8px; width:100%; max-width:400px; margin-top:8px;">
+    <button class="refresh-btn" id="debugBtn" style="flex:1; background:transparent; border:1px solid #2f3346; padding:10px; font-size:12px; color:#8b8fa3;">
+      🔍 余额原始数据
+    </button>
+    <button class="refresh-btn" id="usageBtn" style="flex:1; background:transparent; border:1px solid #2f3346; padding:10px; font-size:12px; color:#8b8fa3;">
+      💳 查本月消费
+    </button>
+  </div>
 
   <!-- Debug Output -->
   <div class="card" id="debugCard" style="display:none; padding:16px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <span style="font-size:13px; font-weight:600; color:#34d399;">📡 API 原始返回</span>
+      <span style="font-size:13px; font-weight:600; color:#34d399;" id="debugTitle">📡 API 返回</span>
       <button id="closeDebug" style="background:none; border:none; color:#8b8fa3; font-size:16px; cursor:pointer;">✕</button>
     </div>
     <pre id="debugOutput" style="font-size:11px; line-height:1.6; color:#34d399; white-space:pre-wrap; word-break:break-all; font-family:'SF Mono',monospace; margin:0;"></pre>
@@ -407,10 +412,13 @@
       const balanceNum = $('balanceNum');
       const balanceStatus = $('balanceStatus');
       const statusText = $('statusText');
-      const usedAmount = $('usedAmount');
-      const totalRecharge = $('totalRecharge');
+      const toppedUpAmount = $('toppedUpAmount');
+      const grantedAmount = $('grantedAmount');
       const balanceState = $('balanceState');
       const suggestTopup = $('suggestTopup');
+      const debugOutput = document.getElementById('debugOutput');
+      const debugParseInfo = document.getElementById('debugParseInfo');
+      const debugTitle = document.getElementById('debugTitle');
       const lastUpdate = $('lastUpdate');
 
       // ---- Load saved key ----
@@ -465,9 +473,10 @@
 
       // ---- Render balance ----
       function renderBalance(data) {
-        const balance = parseFloat(data.balance_infos?.[0]?.total_balance ?? data.balance ?? 0);
-        const used = parseFloat(data.balance_infos?.[0]?.total_used ?? 0);
-        const total = parseFloat(data.total_recharge ?? 0);
+        const info = data.balance_infos?.[0] || {};
+        const balance = parseFloat(info.total_balance ?? data.balance ?? 0);
+        const toppedUp = parseFloat(info.topped_up_balance ?? 0);
+        const granted = parseFloat(info.granted_balance ?? 0);
 
         balanceNum.textContent = fmtCurrency(balance);
 
@@ -475,26 +484,20 @@
         if (balance <= 0) {
           balanceStatus.className = 'balance-status empty';
           statusText.textContent = '余额已用尽';
-          balanceState.textContent = '⚠️ 需立即充值';
-          suggestTopup.textContent = 'API 将无法调用';
-        } else if (balance < 10) {
-          balanceStatus.className = 'balance-status low';
-          statusText.textContent = '余额不足';
-          balanceState.textContent = '⚡ 建议尽快充值';
-          suggestTopup.textContent = `预估可用约 ${Math.floor(balance / 0.002 / 10000)} 万 tokens`;
+          balanceState.textContent = '已用尽';
+          suggestTopup.textContent = '如需使用请充值';
         } else {
           balanceStatus.className = 'balance-status ok';
-          statusText.textContent = '余额充足';
-          balanceState.textContent = '✅ 正常使用中';
-          const estTokens = Math.floor(balance / 0.002 * 10000);
-          suggestTopup.textContent = `预估可用约 ${estTokens.toLocaleString()} tokens`;
+          statusText.textContent = '可用';
+          balanceState.textContent = '✅ 正常';
+          suggestTopup.textContent = `余额 ${fmtCurrency(balance)} 元`;
         }
 
-        usedAmount.textContent = fmtCurrency(used);
-        totalRecharge.textContent = '¥' + fmtCurrency(total);
+        toppedUpAmount.textContent = fmtCurrency(toppedUp);
+        grantedAmount.textContent = fmtCurrency(granted);
 
         // Cache
-        const cache = { balance, used, total, timestamp: Date.now() };
+        const cache = { balance, toppedUp, granted, timestamp: Date.now() };
         try {
           localStorage.setItem(BALANCE_CACHE, JSON.stringify(cache));
         } catch(e) { /* ignore */ }
@@ -509,28 +512,22 @@
           if (!raw) return false;
           const cache = JSON.parse(raw);
           if (!cache || typeof cache.balance !== 'number') return false;
-          // Show stale data immediately
           balanceNum.textContent = fmtCurrency(cache.balance);
-          usedAmount.textContent = fmtCurrency(cache.used || 0);
-          totalRecharge.textContent = '¥' + fmtCurrency(cache.total || 0);
+          toppedUpAmount.textContent = fmtCurrency(cache.toppedUp || 0);
+          grantedAmount.textContent = fmtCurrency(cache.granted || 0);
           lastUpdate.textContent = '上次更新: ' + fmtTime(cache.timestamp);
-          // Skeleton off, content on
           balanceSkeleton.style.display = 'none';
           balanceContent.style.display = 'block';
-          // Minimal status from cache
           if (cache.balance <= 0) {
             balanceStatus.className = 'balance-status empty';
-            statusText.textContent = '余额已用尽';
-            balanceState.textContent = '⚠️ 需立即充值';
-            suggestTopup.textContent = 'API 将无法调用';
-          } else if (cache.balance < 10) {
-            balanceStatus.className = 'balance-status low';
-            statusText.textContent = '余额不足';
-            balanceState.textContent = '⚡ 建议尽快充值';
+            statusText.textContent = '已用尽';
+            balanceState.textContent = '已用尽';
+            suggestTopup.textContent = '如需使用请充值';
           } else {
             balanceStatus.className = 'balance-status ok';
-            statusText.textContent = '余额充足';
-            balanceState.textContent = '✅ 正常使用中';
+            statusText.textContent = '可用';
+            balanceState.textContent = '✅ 正常';
+            suggestTopup.textContent = `余额 ${fmtCurrency(cache.balance)} 元`;
           }
           return true;
         } catch(e) { return false; }
@@ -616,30 +613,65 @@
             debugCard.style.display = 'block';
             return;
           }
+          await fetchAndShow('https://api.deepseek.com/user/balance', '📡 余额 API');
+        }
+
+        async function showUsage() {
+          const key = localStorage.getItem(API_KEY_STORAGE);
+          if (!key) {
+            debugOutput.textContent = '请先保存 API Key';
+            debugParseInfo.textContent = '';
+            debugCard.style.display = 'block';
+            return;
+          }
+          // 试几个可能的消费接口
+          const endpoints = [
+            'https://api.deepseek.com/user/usage',
+            'https://api.deepseek.com/billing/usage',
+            'https://api.deepseek.com/dashboard/billing/usage',
+          ];
+          let results = '';
+          for (const url of endpoints) {
+            try {
+              const resp = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${key}` }
+              });
+              const status = resp.status;
+              const text = await resp.text().catch(() => '');
+              let display = text.slice(0, 500);
+              try { display = JSON.stringify(JSON.parse(text), null, 2); } catch(e) {}
+              results += `>>> ${url}\n状态码: ${status}\n${display}\n\n`;
+            } catch(e) {
+              results += `>>> ${url}\n请求失败: ${e.message}\n\n`;
+            }
+          }
+          debugTitle.textContent = '💳 消费接口测试';
+          debugOutput.textContent = results;
+          debugParseInfo.textContent = '以上是 DeepSeek 可能存在的消费 API，看看哪个返回了数据';
+          debugCard.style.display = 'block';
+        }
+
+        async function fetchAndShow(url, title) {
+          const key = localStorage.getItem(API_KEY_STORAGE);
+          debugTitle.textContent = title;
           try {
-            const resp = await fetch('https://api.deepseek.com/user/balance', {
+            const resp = await fetch(url, {
               headers: { 'Authorization': `Bearer ${key}` }
             });
             const data = await resp.json();
             debugOutput.textContent = JSON.stringify(data, null, 2);
             let parseInfo = '解析结果:\n';
             if (data.balance_infos) {
-              parseInfo += '  字段: balance_infos\n';
               data.balance_infos.forEach((b, i) => {
-                parseInfo += `  [${i}] total_balance=${b.total_balance}, total_used=${b.total_used}\n`;
-                // 显示所有字段
-                Object.keys(b).forEach(k => {
-                  if (!['total_balance','total_used'].includes(k)) {
-                    parseInfo += `       ${k}=${b[k]}\n`;
-                  }
-                });
+                parseInfo += `[${i}] ` + Object.keys(b).map(k => `${k}=${b[k]}`).join(', ') + '\n';
+              });
+            } else {
+              Object.keys(data).forEach(k => {
+                const v = data[k];
+                if (typeof v === 'object') parseInfo += `  ${k}=${JSON.stringify(v).slice(0,200)}\n`;
+                else parseInfo += `  ${k}=${v}\n`;
               });
             }
-            if (data.balance) parseInfo += `  顶层 balance=${data.balance}\n`;
-            if (data.used) parseInfo += `  顶层 used=${data.used}\n`;
-            Object.keys(data).filter(k => !['balance_infos','balance','used','is_available'].includes(k)).forEach(k => {
-              parseInfo += `  其他字段: ${k}=${JSON.stringify(data[k])}\n`;
-            });
             debugParseInfo.textContent = parseInfo;
           } catch(e) {
             debugOutput.textContent = '请求失败: ' + e.message;
@@ -649,6 +681,7 @@
         }
 
         document.getElementById('debugBtn').addEventListener('click', showDebug);
+        document.getElementById('usageBtn').addEventListener('click', showUsage);
         document.getElementById('closeDebug').addEventListener('click', () => {
           debugCard.style.display = 'none';
         });
