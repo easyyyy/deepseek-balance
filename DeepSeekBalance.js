@@ -9,7 +9,7 @@ if (!apiKey) {
   return;
 }
 
-// Fetch balance
+// Fetch balance - 调试模式下直接显示原始数据
 const url = "https://api.deepseek.com/user/balance";
 const request = new Request(url);
 request.headers = {
@@ -36,11 +36,47 @@ try {
   error = e.message + (rawData ? "\n" + JSON.stringify(rawData) : "");
 }
 
-// Create widget
+// ============ 调试模式：在 App 里运行时显示原始数据 ============
+if (!config.runsInWidget) {
+  const debugWidget = new ListWidget();
+  debugWidget.backgroundColor = new Color("#0f1117");
+  debugWidget.setPadding(12, 12, 12, 12);
+
+  const title = debugWidget.addText("📡 API 原始返回");
+  title.font = Font.boldSystemFont(16);
+  title.textColor = new Color("#e8eaf0");
+  debugWidget.addSpacer(8);
+
+  if (error) {
+    const err = debugWidget.addText("错误: " + error);
+    err.font = Font.systemFont(12);
+    err.textColor = new Color("#f87171");
+  } else {
+    const jsonStr = JSON.stringify(rawData, null, 2);
+    const text = debugWidget.addText(jsonStr);
+    text.font = Font.monospacedSystemFont(12);
+    text.textColor = new Color("#34d399");
+
+    debugWidget.addSpacer(10);
+    const parseInfo = debugWidget.addText(
+      "→ 解析结果:\n" +
+      "  余额: " + balance + "\n" +
+      "  已用: " + used + "\n\n" +
+      "💡 截图发给我看看字段结构"
+    );
+    parseInfo.font = Font.systemFont(13);
+    parseInfo.textColor = new Color("#fbbf24");
+  }
+
+  debugWidget.presentMedium();
+  Script.complete();
+  return;
+}
+
+// ============ 小组件模式 ============
 const widget = new ListWidget();
 widget.backgroundColor = new Color("#0f1117");
 
-// Gradient
 const gradient = new LinearGradient();
 gradient.locations = [0, 1];
 gradient.colors = [
@@ -55,7 +91,6 @@ if (error) {
   errText.font = Font.systemFont(13);
   errText.textColor = new Color("#f87171");
   Script.complete();
-  widget.presentMedium();
   return;
 }
 
@@ -66,7 +101,6 @@ title.font = Font.boldSystemFont(15);
 title.textColor = new Color("#e8eaf0");
 titleRow.addSpacer();
 
-// Spacer
 widget.addSpacer(6);
 
 // Balance
@@ -79,7 +113,6 @@ amountStack.addSpacer(4);
 const unitText = amountStack.addText("元");
 unitText.font = Font.systemFont(18);
 unitText.textColor = new Color("#8b8fa3");
-unitText.lineLimit = 1;
 
 widget.addSpacer(4);
 
@@ -94,14 +127,13 @@ statusText.textColor = balance > 10 ? new Color("#34d399") : (balance > 0 ? new 
 
 widget.addSpacer(10);
 
-// Bottom row: used + available
+// Bottom
 const bottomRow = widget.addStack();
 bottomRow.layoutHorizontally();
 
-// Left: used
 const leftCol = bottomRow.addStack();
 leftCol.layoutVertically();
-const usedLabel = leftCol.addText("已用");
+const usedLabel = leftCol.addText("本月已用");
 usedLabel.font = Font.systemFont(11);
 usedLabel.textColor = new Color("#8b8fa3");
 leftCol.addSpacer(2);
@@ -117,7 +149,6 @@ if (used === 0) {
 
 bottomRow.addSpacer();
 
-// Right: status
 const rightCol = bottomRow.addStack();
 rightCol.layoutVertically();
 const rightLabel = rightCol.addText("状态");
@@ -130,7 +161,6 @@ rightVal.textColor = balance > 0 ? new Color("#34d399") : new Color("#f87171");
 
 widget.addSpacer(8);
 
-// Update time
 const now = new Date();
 const timeStr = now.getHours().toString().padStart(2, "0") + ":" +
                 now.getMinutes().toString().padStart(2, "0") + ":" +
@@ -139,14 +169,7 @@ const timeText = widget.addText("更新于 " + timeStr);
 timeText.font = Font.systemFont(9);
 timeText.textColor = new Color("#3f4359");
 
-// Refresh after 10 min
 widget.refreshAfterDate = new Date(Date.now() + 10 * 60 * 1000);
 
-// Present
-if (config.runsInWidget) {
-  Script.setWidget(widget);
-} else {
-  widget.presentMedium();
-}
-
+Script.setWidget(widget);
 Script.complete();
