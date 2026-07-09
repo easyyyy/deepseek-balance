@@ -369,6 +369,21 @@
     <span>刷新余额</span>
   </button>
 
+  <!-- Debug Toggle -->
+  <button class="refresh-btn" id="debugBtn" style="margin-top:8px; background:transparent; border:1px solid #2f3346; padding:8px; font-size:12px; color:#8b8fa3;">
+    <span>🔍 查看 API 原始数据</span>
+  </button>
+
+  <!-- Debug Output -->
+  <div class="card" id="debugCard" style="display:none; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <span style="font-size:13px; font-weight:600; color:#34d399;">📡 API 原始返回</span>
+      <button id="closeDebug" style="background:none; border:none; color:#8b8fa3; font-size:16px; cursor:pointer;">✕</button>
+    </div>
+    <pre id="debugOutput" style="font-size:11px; line-height:1.6; color:#34d399; white-space:pre-wrap; word-break:break-all; font-family:'SF Mono',monospace; margin:0;"></pre>
+    <div id="debugParseInfo" style="margin-top:8px; font-size:12px; color:#fbbf24;"></div>
+  </div>
+
   <div class="last-update" id="lastUpdate"></div>
 
   <div class="footer">
@@ -591,6 +606,52 @@
           balanceStatus.className = 'balance-status empty';
           balanceState.textContent = '请先输入 API Key';
         }
+
+        // ---- Debug: show raw API response ----
+        async function showDebug() {
+          const key = localStorage.getItem(API_KEY_STORAGE);
+          if (!key) {
+            debugOutput.textContent = '请先保存 API Key';
+            debugParseInfo.textContent = '';
+            debugCard.style.display = 'block';
+            return;
+          }
+          try {
+            const resp = await fetch('https://api.deepseek.com/user/balance', {
+              headers: { 'Authorization': `Bearer ${key}` }
+            });
+            const data = await resp.json();
+            debugOutput.textContent = JSON.stringify(data, null, 2);
+            let parseInfo = '解析结果:\n';
+            if (data.balance_infos) {
+              parseInfo += '  字段: balance_infos\n';
+              data.balance_infos.forEach((b, i) => {
+                parseInfo += `  [${i}] total_balance=${b.total_balance}, total_used=${b.total_used}\n`;
+                // 显示所有字段
+                Object.keys(b).forEach(k => {
+                  if (!['total_balance','total_used'].includes(k)) {
+                    parseInfo += `       ${k}=${b[k]}\n`;
+                  }
+                });
+              });
+            }
+            if (data.balance) parseInfo += `  顶层 balance=${data.balance}\n`;
+            if (data.used) parseInfo += `  顶层 used=${data.used}\n`;
+            Object.keys(data).filter(k => !['balance_infos','balance','used','is_available'].includes(k)).forEach(k => {
+              parseInfo += `  其他字段: ${k}=${JSON.stringify(data[k])}\n`;
+            });
+            debugParseInfo.textContent = parseInfo;
+          } catch(e) {
+            debugOutput.textContent = '请求失败: ' + e.message;
+            debugParseInfo.textContent = '';
+          }
+          debugCard.style.display = 'block';
+        }
+
+        document.getElementById('debugBtn').addEventListener('click', showDebug);
+        document.getElementById('closeDebug').addEventListener('click', () => {
+          debugCard.style.display = 'none';
+        });
 
         // Events
         saveBtn.addEventListener('click', saveKey);
