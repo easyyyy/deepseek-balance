@@ -1,20 +1,54 @@
-// Variables
-const apiKey = args.widgetParameter || "";
+// DeepSeek 余额小组件
+const KEYCHAIN_KEY = "ds_api_key";
 
+// ============ 获取 API Key ============
+async function getApiKey() {
+  // 优先用 widget 参数
+  if (args.widgetParameter) {
+    return args.widgetParameter;
+  }
+  // 其次读 Keychain
+  const saved = Keychain.contains(KEYCHAIN_KEY) ? Keychain.get(KEYCHAIN_KEY) : "";
+  if (saved) {
+    return saved;
+  }
+  // 都没有则弹窗输入
+  const p = new Prompt();
+  p.title = "DeepSeek API Key";
+  p.message = "输入你的 API Key (sk-...)";
+  p.addTextField("key", "", { placeholder: "sk-..." });
+  p.addButton("确定");
+  const didSubmit = await p.show();
+  if (!didSubmit) {
+    return null;
+  }
+  const key = p.fieldValues["key"].trim();
+  if (!key) return null;
+  // 保存到 Keychain
+  Keychain.set(KEYCHAIN_KEY, key);
+  return key;
+}
+
+// ============ 查余额 ============
+async function fetchBalance(apiKey) {
+  const url = "https://api.deepseek.com/user/balance";
+  const request = new Request(url);
+  request.headers = {
+    "Authorization": `Bearer ${apiKey}`
+  };
+  const data = await request.loadJSON();
+  return data;
+}
+
+// ============ 主流程 ============
+const apiKey = await getApiKey();
 if (!apiKey) {
-  const widget = new ListWidget();
-  widget.addText("请在小组件参数中\n输入 DeepSeek API Key");
-  widget.presentMedium();
+  const w = new ListWidget();
+  w.addText("已取消");
+  w.presentMedium();
   Script.complete();
   return;
 }
-
-// Fetch balance - 调试模式下直接显示原始数据
-const url = "https://api.deepseek.com/user/balance";
-const request = new Request(url);
-request.headers = {
-  "Authorization": `Bearer ${apiKey}`
-};
 
 let balance = 0;
 let used = 0;
@@ -22,9 +56,8 @@ let rawData = null;
 let error = null;
 
 try {
-  const data = await request.loadJSON();
+  const data = await fetchBalance(apiKey);
   rawData = data;
-  // 兼容不同返回格式
   if (data.balance_infos && data.balance_infos.length > 0) {
     balance = parseFloat(data.balance_infos[0].total_balance ?? 0);
     used = parseFloat(data.balance_infos[0].total_used ?? data.balance_infos[0].used ?? 0);
@@ -33,10 +66,10 @@ try {
     used = parseFloat(data.used ?? 0);
   }
 } catch(e) {
-  error = e.message + (rawData ? "\n" + JSON.stringify(rawData) : "");
+  error = e.message;
 }
 
-// ============ 调试模式：在 App 里运行时显示原始数据 ============
+// ============ 调试模式：App 内运行显示原始数据 ============
 if (!config.runsInWidget) {
   const debugWidget = new ListWidget();
   debugWidget.backgroundColor = new Color("#0f1117");
@@ -127,7 +160,7 @@ statusText.textColor = balance > 10 ? new Color("#34d399") : (balance > 0 ? new 
 
 widget.addSpacer(10);
 
-// Bottom
+// Bottom row
 const bottomRow = widget.addStack();
 bottomRow.layoutHorizontally();
 
